@@ -2,10 +2,11 @@ import csv
 import io
 import os
 import shutil
-from fastapi import APIRouter, HTTPException, Query, UploadFile
+from fastapi import APIRouter, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from models.users import User
 from config import create_db_connection, get_upload_folder
+from security import pwd_context
 
 
 router = APIRouter()
@@ -36,8 +37,12 @@ def get_users(
                 user = User(**row_dict)
                 result.append(user)
             return result
+
     except Exception as e:
-        return f"Error: {str(e)}"
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
     finally:
         connection.close()
 
@@ -89,18 +94,34 @@ def add_user(user: User):
                 raise HTTPException(status_code=400, detail="User already exists")
             else:
                 query = """
-                INSERT INTO users (name, lastname, birthday, dni) 
-                VALUES (%s, %s, %s, %s);
+                INSERT INTO users (name, lastname, birthday, dni,username,password) 
+                VALUES (%s, %s, %s, %s,%s,%s);
                 """
+
+                encrypted_password = pwd_context.encrypt(user.password)
                 cursor.execute(
-                    query, (user.name, user.lastname, user.birthday, user.dni)
+                    query,
+                    (
+                        user.name,
+                        user.lastname,
+                        user.birthday,
+                        user.dni,
+                        user.username,
+                        encrypted_password,
+                    ),
                 )
                 connection.commit()
-                return "User added successfully"
+                return JSONResponse(
+                    content={"message": "User added successfully"},
+                    status_code=200,
+                )
     except HTTPException as he:
         raise
     except Exception as e:
-        return HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
     finally:
         connection.close()
 
@@ -111,24 +132,50 @@ def modify_user(user: User):
     try:
         if user_exist(user):
             with connection.cursor() as cursor:
+                # query = """
+                #     UPDATE users
+                #     SET name = %s, lastname = %s, birthday = %s, dni = %s
+                #     WHERE id = %s
+                #     """
                 query = """
-                    UPDATE users
-                    SET name = %s, lastname = %s, birthday = %s, dni = %s
-                    WHERE id = %s
+                    UPDATE users 
+                    SET name    = %s,
+                    lastname    = %s,
+                    birthday    = %s,
+                    dni         = %s,
+                    username    = %s,
+                    password    = %s
+                    WHERE id    = %s
                     """
+
+                encrypted_password = pwd_context.encrypt(user.password)
                 cursor.execute(
                     query,
-                    (user.name, user.lastname, user.birthday, user.dni, user.id),
+                    (
+                        user.name,
+                        user.lastname,
+                        user.birthday,
+                        user.dni,
+                        user.username,
+                        encrypted_password,
+                        user.id,
+                    ),
                 )
                 connection.commit()
-                return "Record updated successfully"
+
+                return JSONResponse(
+                    content={"message": "Record updated successfully"},
+                    status_code=200,
+                )
         else:
             raise HTTPException(status_code=404, detail="User not found")
     except HTTPException as he:
-        print(f"HTTPException: {he}")
         raise
     except Exception as e:
-        return f"Error: {str(e)}"
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
     finally:
         connection.close()
 
@@ -142,14 +189,23 @@ def remove_user(user: User):
                 delete_query = "Delete FROM users WHERE id = %s"
                 delete_cursor.execute(delete_query, (user.id,))
                 connection.commit()
-                return str(delete_cursor.rowcount) + " Record Deleted successfully"
+
+                return JSONResponse(
+                    content={
+                        "message": str(delete_cursor.rowcount)
+                        + " Record Deleted successfully"
+                    },
+                    status_code=200,
+                )
         else:
             raise HTTPException(status_code=404, detail="User not found")
     except HTTPException as he:
-        print(f"HTTPException: {he}")
         raise
     except Exception as e:
-        return f"Error: {str(e)}"
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
     finally:
         connection.close()
 
@@ -166,8 +222,13 @@ async def upload_file(file: UploadFile):
             return JSONResponse(
                 content={"message": "File uploaded successfully"}, status_code=200
             )
+    except HTTPException as he:
+        raise
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
 
 
 def user_exist(user: User):
@@ -176,4 +237,5 @@ def user_exist(user: User):
         query = """SELECT dni FROM users WHERE dni = %s"""
         cursor.execute(query, (user.dni,))
         result = cursor.fetchone()
+        cursor.close()
         return result

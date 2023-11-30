@@ -27,4 +27,3 @@ def create_db_connection():
     db_config = get_database_config()
     connection = mysql.connector.connect(**db_config)
     return connection
-
