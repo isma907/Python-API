@@ -4,10 +4,9 @@ import os
 import shutil
 from fastapi import APIRouter, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
+from auth import encode_password
 from models.users import User
-from config import create_db_connection, get_upload_folder
-from security import pwd_context
-
+from config import create_db_connection
 
 router = APIRouter()
 
@@ -98,7 +97,7 @@ def add_user(user: User):
                 VALUES (%s, %s, %s, %s,%s,%s);
                 """
 
-                encrypted_password = pwd_context.encrypt(user.password)
+                encrypted_password = encode_password(user.password)
                 cursor.execute(
                     query,
                     (
@@ -148,7 +147,7 @@ def modify_user(user: User):
                     WHERE id    = %s
                     """
 
-                encrypted_password = pwd_context.encrypt(user.password)
+                encrypted_password = encode_password(user.password)
                 cursor.execute(
                     query,
                     (
@@ -214,7 +213,7 @@ def remove_user(user: User):
 async def upload_file(file: UploadFile):
     current_directory = os.path.dirname(os.path.abspath(__file__))
     root_directory = os.path.dirname(current_directory)
-    upload_folder = os.path.join(root_directory, get_upload_folder())
+    upload_folder = os.path.join(root_directory, os.getenv("UPLOAD_FOLDER")())
     try:
         upload_path = os.path.join(upload_folder, file.filename)
         with open(upload_path, "wb") as f:

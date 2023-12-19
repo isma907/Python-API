@@ -1,29 +1,17 @@
-import configparser
 import mysql.connector
-
-
-def load_config():
-    config = configparser.ConfigParser()
-    config.read("config.ini")
-    return config
-
-
-def get_upload_folder():
-    config = load_config()
-    return config["Paths"]["upload_folder"]
-
-
-def get_database_config():
-    config = load_config()
-    return {
-        "host": config["Database"]["host"],
-        "user": config["Database"]["user"],
-        "password": config["Database"]["password"],
-        "database": config["Database"]["database"],
-    }
+import os
 
 
 def create_db_connection():
-    db_config = get_database_config()
-    connection = mysql.connector.connect(**db_config)
-    return connection
+    try:
+        db_config = {
+            "host": os.getenv("DATABASE_HOST"),
+            "user": os.getenv("DATABASE_USER"),
+            "password": os.getenv("DATABASE_PASSWORD"),
+            "database": os.getenv("DATABASE_NAME"),
+        }
+        connection = mysql.connector.connect(**db_config)
+        return connection
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        raise
